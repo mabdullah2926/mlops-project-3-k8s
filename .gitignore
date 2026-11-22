@@ -1,0 +1,7 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+.venv/
+__pycache__/
+mlruns/
+ml_pipeline/mlflow.db

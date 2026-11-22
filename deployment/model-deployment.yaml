@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-model-deployment
+  labels:
+    app: iris-model
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: iris-model
+  template:
+    metadata:
+      labels:
+        app: iris-model
+    spec:
+      containers:
+        - name: model-server
+          image: nginx:1.25-alpine
+          ports:
+            - containerPort: 80
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Serving IrisClassifier from pod: $HOSTNAME" > /usr/share/nginx/html/index.html
+              exec nginx -g 'daemon off;'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-model-svc
+spec:
+  selector:
+    app: iris-model
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: NodePort

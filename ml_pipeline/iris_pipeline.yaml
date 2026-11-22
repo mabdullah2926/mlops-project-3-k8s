@@ -1,0 +1,211 @@
+# PIPELINE DEFINITION
+# Name: iris-mlops-pipeline
+# Description: Load, train, and evaluate Iris model
+components:
+  comp-evaluate-model:
+    executorLabel: exec-evaluate-model
+    inputDefinitions:
+      parameters:
+        X_test_path:
+          parameterType: STRING
+        model_in_path:
+          parameterType: STRING
+        y_test_path:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: NUMBER_DOUBLE
+        metrics_out_path:
+          parameterType: STRING
+  comp-load-and-preprocess-data:
+    executorLabel: exec-load-and-preprocess-data
+    outputDefinitions:
+      parameters:
+        X_test_path:
+          parameterType: STRING
+        X_train_path:
+          parameterType: STRING
+        y_test_path:
+          parameterType: STRING
+        y_train_path:
+          parameterType: STRING
+  comp-train-model:
+    executorLabel: exec-train-model
+    inputDefinitions:
+      parameters:
+        X_train_path:
+          parameterType: STRING
+        y_train_path:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        model_out_path:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-evaluate-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'scikit-learn'\
+          \ 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.18.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_model(\n    X_test_path: dsl.InputPath(str),\n    y_test_path:\
+          \ dsl.InputPath(str),\n    model_in_path: dsl.InputPath(str),\n    metrics_out_path:\
+          \ dsl.OutputPath(str),\n) -> float:\n    from sklearn.metrics import accuracy_score\n\
+          \    import joblib\n\n    X_test = joblib.load(X_test_path)\n    y_test\
+          \ = joblib.load(y_test_path)\n    clf = joblib.load(model_in_path)\n   \
+          \ preds = clf.predict(X_test)\n    acc = float(accuracy_score(y_test, preds))\n\
+          \    with open(metrics_out_path, \"w\") as f:\n        f.write(f\"accuracy:\
+          \ {acc:.4f}\\n\")\n    return acc\n\n"
+        image: python:3.12-slim
+    exec-load-and-preprocess-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - load_and_preprocess_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'scikit-learn'\
+          \ 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.18.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef load_and_preprocess_data(\n    X_train_path: dsl.OutputPath(str),\n\
+          \    X_test_path: dsl.OutputPath(str),\n    y_train_path: dsl.OutputPath(str),\n\
+          \    y_test_path: dsl.OutputPath(str),\n):\n    from sklearn.datasets import\
+          \ load_iris\n    from sklearn.model_selection import train_test_split\n\
+          \    import joblib\n\n    data = load_iris()\n    X_train, X_test, y_train,\
+          \ y_test = train_test_split(\n        data.data, data.target, test_size=0.2,\
+          \ random_state=42\n    )\n    joblib.dump(X_train, X_train_path)\n    joblib.dump(X_test,\
+          \ X_test_path)\n    joblib.dump(y_train, y_train_path)\n    joblib.dump(y_test,\
+          \ y_test_path)\n\n"
+        image: python:3.12-slim
+    exec-train-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'scikit-learn'\
+          \ 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.18.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_model(\n    X_train_path: dsl.InputPath(str),\n    y_train_path:\
+          \ dsl.InputPath(str),\n    model_out_path: dsl.OutputPath(str),\n):\n  \
+          \  from sklearn.ensemble import RandomForestClassifier\n    import joblib\n\
+          \n    X_train = joblib.load(X_train_path)\n    y_train = joblib.load(y_train_path)\n\
+          \    clf = RandomForestClassifier(n_estimators=50, random_state=42)\n  \
+          \  clf.fit(X_train, y_train)\n    joblib.dump(clf, model_out_path)\n\n"
+        image: python:3.12-slim
+pipelineInfo:
+  description: Load, train, and evaluate Iris model
+  name: iris-mlops-pipeline
+root:
+  dag:
+    tasks:
+      evaluate-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-model
+        dependentTasks:
+        - load-and-preprocess-data
+        - train-model
+        inputs:
+          parameters:
+            X_test_path:
+              taskOutputParameter:
+                outputParameterKey: X_test_path
+                producerTask: load-and-preprocess-data
+            model_in_path:
+              taskOutputParameter:
+                outputParameterKey: model_out_path
+                producerTask: train-model
+            y_test_path:
+              taskOutputParameter:
+                outputParameterKey: y_test_path
+                producerTask: load-and-preprocess-data
+        taskInfo:
+          name: evaluate-model
+      load-and-preprocess-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-load-and-preprocess-data
+        taskInfo:
+          name: load-and-preprocess-data
+      train-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-model
+        dependentTasks:
+        - load-and-preprocess-data
+        inputs:
+          parameters:
+            X_train_path:
+              taskOutputParameter:
+                outputParameterKey: X_train_path
+                producerTask: load-and-preprocess-data
+            y_train_path:
+              taskOutputParameter:
+                outputParameterKey: y_train_path
+                producerTask: load-and-preprocess-data
+        taskInfo:
+          name: train-model
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.18.1
