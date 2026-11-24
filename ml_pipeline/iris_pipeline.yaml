@@ -4,8 +4,8 @@ metadata:
   generateName: iris-pipeline-
   annotations:
     pipelines.kubeflow.org/kfp_sdk_version: 2.7.0
-    pipelines.kubeflow.org/pipeline_spec: '{"description": "Iris pipeline matching
-      Kubeflow UI graph", "name": "iris-pipeline"}'
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Iris ML pipeline matching
+      screenshot DAG", "name": "iris-pipeline"}'
 spec:
   entrypoint: iris-pipeline
   templates:
@@ -32,6 +32,8 @@ spec:
             from: '{{tasks.load-and-preprocess.outputs.artifacts.test_data}}'
           - name: model
             from: '{{tasks.train-model.outputs.artifacts.model}}'
+          - name: train_metrics
+            from: '{{tasks.train-model.outputs.artifacts.metrics}}'
   - name: load-and-preprocess
     container:
       image: python:3.11-slim
@@ -80,6 +82,8 @@ spec:
         path: /tmp/in_test
       - name: model
         path: /tmp/in_model
+      - name: train_metrics
+        path: /tmp/in_train_metrics
     container:
       image: python:3.11-slim
       command:
