@@ -1,87 +1,97 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: iris-classification-pipeline-
+  generateName: iris-pipeline-
   annotations:
     pipelines.kubeflow.org/kfp_sdk_version: 2.7.0
-    pipelines.kubeflow.org/pipeline_spec: '{"description": "Iris ML pipeline", "name":
-      "iris-classification-pipeline"}'
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Iris pipeline matching
+      Kubeflow UI graph", "name": "iris-pipeline"}'
 spec:
-  entrypoint: iris-classification-pipeline
+  entrypoint: iris-pipeline
   templates:
-  - name: iris-classification-pipeline
+  - name: iris-pipeline
     dag:
       tasks:
-      - name: load-and-preprocess-data
-        template: load-and-preprocess-data
+      - name: load-and-preprocess
+        template: load-and-preprocess
       - name: train-model
         template: train-model
         dependencies:
-        - load-and-preprocess-data
+        - load-and-preprocess
         arguments:
           artifacts:
-          - name: dataset
-            from: '{{tasks.load-and-preprocess-data.outputs.artifacts.dataset}}'
-      - name: evaluate-and-register-model
-        template: evaluate-and-register-model
+          - name: train_data
+            from: '{{tasks.load-and-preprocess.outputs.artifacts.train_data}}'
+      - name: evaluate-model
+        template: evaluate-model
         dependencies:
         - train-model
         arguments:
           artifacts:
-          - name: dataset
-            from: '{{tasks.load-and-preprocess-data.outputs.artifacts.dataset}}'
+          - name: test_data
+            from: '{{tasks.load-and-preprocess.outputs.artifacts.test_data}}'
           - name: model
             from: '{{tasks.train-model.outputs.artifacts.model}}'
-  - name: load-and-preprocess-data
+  - name: load-and-preprocess
     container:
       image: python:3.11-slim
       command:
       - sh
       - -c
-      - pip install --quiet scikit-learn pandas && python3 -c "from sklearn.datasets
-        import load_iris; from sklearn.model_selection import train_test_split; df
-        = load_iris(as_frame=True).frame; tr, te = train_test_split(df, test_size=0.2,
-        random_state=42); tr.to_csv('/tmp/train.csv'); te.to_csv('/tmp/test.csv');
-        print('Preprocessed OK')"
+      - pip install --quiet scikit-learn pandas && python3 -c "import os; from sklearn.datasets
+        import load_iris; from sklearn.model_selection import train_test_split; os.makedirs('/tmp/train_data',
+        exist_ok=True); os.makedirs('/tmp/test_data', exist_ok=True); df = load_iris(as_frame=True).frame;
+        tr, te = train_test_split(df, test_size=0.2, random_state=42); tr.to_csv('/tmp/train_data/train.csv',
+        index=False); te.to_csv('/tmp/test_data/test.csv', index=False); print('Preprocessed
+        OK')"
     outputs:
       artifacts:
-      - name: dataset
-        path: /tmp
+      - name: train_data
+        path: /tmp/train_data
+      - name: test_data
+        path: /tmp/test_data
   - name: train-model
     inputs:
       artifacts:
-      - name: dataset
-        path: /tmp/in
+      - name: train_data
+        path: /tmp/in_train
     container:
       image: python:3.11-slim
       command:
       - sh
       - -c
-      - pip install --quiet scikit-learn pandas joblib && python3 -c "import joblib,
-        pandas as pd; from sklearn.ensemble import RandomForestClassifier; df = pd.read_csv('/tmp/in/train.csv');
-        clf = RandomForestClassifier(n_estimators=100, random_state=42).fit(df.drop(columns=['target']),
-        df['target']); joblib.dump(clf, '/tmp/model.joblib'); print('Trained OK')"
+      - 'pip install --quiet scikit-learn pandas joblib && python3 -c "import os,
+        json, joblib, pandas as pd; from sklearn.ensemble import RandomForestClassifier;
+        os.makedirs(''/tmp/model'', exist_ok=True); os.makedirs(''/tmp/metrics'',
+        exist_ok=True); df = pd.read_csv(''/tmp/in_train/train.csv''); clf = RandomForestClassifier(n_estimators=100,
+        random_state=42).fit(df.drop(columns=[''target'']), df[''target'']); joblib.dump(clf,
+        ''/tmp/model/model.joblib''); json.dump({''train_rows'': len(df)}, open(''/tmp/metrics/train_metrics.json'',
+        ''w'')); print(''Trained OK'')"'
     outputs:
       artifacts:
       - name: model
-        path: /tmp/model.joblib
-  - name: evaluate-and-register-model
+        path: /tmp/model
+      - name: metrics
+        path: /tmp/metrics
+  - name: evaluate-model
     inputs:
       artifacts:
-      - name: dataset
-        path: /tmp/in
+      - name: test_data
+        path: /tmp/in_test
       - name: model
-        path: /tmp/model.joblib
+        path: /tmp/in_model
     container:
       image: python:3.11-slim
       command:
       - sh
       - -c
-      - pip install --quiet scikit-learn pandas joblib && python3 -c "import joblib,
-        pandas as pd; from sklearn.metrics import accuracy_score; df = pd.read_csv('/tmp/in/test.csv');
-        clf = joblib.load('/tmp/model.joblib'); print('Accuracy:', accuracy_score(df['target'],
-        clf.predict(df.drop(columns=['target']))))"
+      - 'pip install --quiet scikit-learn pandas joblib && python3 -c "import os,
+        json, joblib, pandas as pd; from sklearn.metrics import accuracy_score; os.makedirs(''/tmp/eval_metrics'',
+        exist_ok=True); df = pd.read_csv(''/tmp/in_test/test.csv''); clf = joblib.load(''/tmp/in_model/model.joblib'');
+        acc = accuracy_score(df[''target''], clf.predict(df.drop(columns=[''target''])));
+        json.dump({''accuracy'': acc}, open(''/tmp/eval_metrics/metrics.json'', ''w''));
+        print(''Accuracy:'', acc)"'
     outputs:
       artifacts:
       - name: metrics
-        path: /tmp/metrics
+        path: /tmp/eval_metrics
